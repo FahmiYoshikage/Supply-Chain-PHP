@@ -1,0 +1,274 @@
+<head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+
+
+<?php
+function GET($key, $default){
+    $val = isset($_SESSION[$key]) && $_SESSION[$key] != '' ? $_SESSION[$key] : $default;
+    $val = isset($_POST[$key]) && $_POST[$key] != '' ? $_POST[$key] : $val;
+    $val = isset($_GET[$key]) && $_GET[$key] != '' ? $_GET[$key] : $val;
+    return $val;
+}
+
+function DataBarang(){
+    include 'koneksi.php';
+
+    $page = GET('page', 0);
+
+    if($page == 1){                             //menambah barang
+        echo '<div class="container mt-5">';
+        echo '<div class="card">';
+        echo '<div class="card-header">Tambah Barang</div>';
+        echo '<div class="card-body">';
+            
+            $name = GET('nama', '');
+            $price = GET('harga', '');
+            $stock = GET('stok', '');
+
+            if($name != '' && $price != '' && $stock != ''){
+                $sql = "INSERT INTO tb_barang (brg_nama, brg_harga, brg_stok, brg_time) VALUES ('$name', '$price', '$stock', NOW())";
+                $query = mysqli_query($conn, $sql);
+                if ($query) {
+                    header('Location:index.php');
+                    exit();
+                } else {
+                    '<div class="alert alert-danger">Error: ' . mysqli_error($conn) . '</div>';
+                }
+            }
+
+            echo '<form name="form1" method="POST" action="index.php?page='.$page.'">';
+        echo '<div class="mb-3">
+                <label for="nama" class="form-label">Nama Barang</label>
+                <input type="text" class="form-control" id="nama" name="nama" value="'.$name.'" required>
+              </div>';
+        echo '<div class="mb-3">
+                <label for="harga" class="form-label">Harga</label>
+                <input type="text" class="form-control" id="harga" name="harga" value="'.$price.'" required>
+              </div>';
+        echo '<div class="mb-3">
+                <label for="stok" class="form-label">Stok</label>
+                <input type="text" class="form-control" id="stok" name="stok" value="'.$stock.'" required>
+              </div>';
+        echo '<button type="submit" class="btn btn-primary">Tambah</button>';
+        echo '</form>';
+
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+    }
+
+    if ($page == 2){
+        $id = GET('id', 0);
+
+        if ($id) {
+            $sql = "DELETE FROM tb_barang WHERE brg_id = '$id'";
+            $query = mysqli_query($conn, $sql);
+        
+            if ($query) {
+                // Reset auto-increment
+                mysqli_query($conn, "ALTER TABLE tb_barang AUTO_INCREMENT = 1");
+                header('Location: index.php');
+                exit();
+            } else {
+                echo 'Error: ' . mysqli_error($conn);
+            }
+        }
+    }
+
+    if ($page == 3) { // Mengambil barang
+        $id = GET('id', 0);
+        $quantity = GET('quantity', 0); // Jumlah barang yang diambil
+        
+        if ($id && $quantity) {
+            // Cek stok saat ini
+            $check_sql = "SELECT brg_stok FROM tb_barang WHERE brg_id = '$id'";
+            $check_query = mysqli_query($conn, $check_sql);
+            $data = mysqli_fetch_assoc($check_query);
+    
+            if ($data) {
+                $current_stock = $data['brg_stok'];
+    
+                if ($quantity > $current_stock) {
+                    // Jika permintaan lebih banyak dari stok
+                    echo "<p style='color: red;'>Permintaan melebihi stok tersedia! Stok saat ini: $current_stock.</p>";
+                } else {
+                    // Kurangi stok
+                    $new_stock = $current_stock - $quantity;
+                    $update_sql = "UPDATE tb_barang SET brg_stok = '$new_stock' WHERE brg_id = '$id'";
+                    $update_query = mysqli_query($conn, $update_sql);
+    
+                    if ($update_query) {
+                        echo "<p style='color: green;'>Barang berhasil diambil. Sisa stok: $new_stock.</p>";
+    
+                        // Peringatan stok rendah
+                        if ($new_stock <= 5) {
+                            echo "<p style='color: orange;'>Peringatan: Stok barang ini rendah! Sisa stok: $new_stock.</p>";
+                        }
+                    } else {
+                        echo "<p style='color: red;'>Error: " . mysqli_error($conn) . "</p>";
+                    }
+                }
+            } else {
+                echo "<p style='color: red;'>Barang tidak ditemukan.</p>";
+            }
+        }
+    }
+
+
+    if ($page == 3) { // Formulir pengambilan barang
+        $id = GET('id', 0);
+    
+        if ($id) {
+            echo '<div class="container mt-5">';
+            echo '<div class="card">';
+            echo '<div class="card-header">Ambil Barang</div>';
+            echo '<div class="card-body">';
+            echo '<form method="GET" action="index.php">';
+            echo '<input type="hidden" name="page" value="3">';
+            echo '<input type="hidden" name="id" value="'.$id.'">';
+            echo '<div class="mb-3">
+                    <label for="quantity" class="form-label">Jumlah yang diambil</label>
+                    <input type="number" class="form-control" id="quantity" name="quantity" min="1" required>
+                  </div>';
+            echo '<button type="submit" class="btn btn-primary">Ambil</button>';
+            echo '</form>';
+            echo '</div>';
+            echo '</div>';
+            echo '</div>';
+        }
+    }
+    
+
+    if ($page == 0){                            //menampilkan barang
+
+        echo '<div class="container mt-5">';
+        echo '<a href="index.php?page=1" class="btn btn-success mb-3">+ Tambah Barang</a>';
+        echo '<table class="table table-bordered">';
+        echo '<thead class="table-light">';
+        echo '<tr>';
+        echo '<th>ID Barang</th>';
+        echo '<th>Nama Barang</th>';
+        echo '<th>Harga</th>';
+        echo '<th>Stok</th>';
+        echo '<th>Time Update</th>';
+        echo '<th>Actions</th>';
+        echo '</tr>';
+        echo '</thead>';
+        echo '<tbody>';
+
+        $sql = "SELECT * FROM tb_barang";
+        $query = mysqli_query($conn, $sql);
+
+        while($row = mysqli_fetch_assoc($query)){
+            echo '<tr>
+                <td>'.$row['brg_id'].'</td>
+                <td>'.$row['brg_nama'].'</td>
+                <td>Rp. ' . number_format($row['brg_harga'], 0, ',', '.') . '</td>
+                <td>'.$row['brg_stok'].'</td>
+                <td>'.$row['brg_time'].'</td>
+                <td>
+                    <a href="index.php?page=2&id='.$row['brg_id'].'" class="btn btn-danger btn-sm" onclick="return confirm(\'Yakin ingin menghapus item ini?\');">Hapus</a>
+                    <a href="index.php?page=3&id='.$row['brg_id'].'" class="btn btn-primary btn-sm">Ambil Barang</a>
+                </td>
+                </td>
+
+            </tr>';
+        }
+        echo '</table>';
+    }
+}
+?>
+
+
+<?php
+$id = GET('id', 0);
+include 'koneksi.php';
+
+if ($id) {
+    $sql = "SELECT * FROM tb_barang WHERE brg_id = '$id'";
+    $result = mysqli_query($conn, $sql);
+    $barang = mysqli_fetch_assoc($result);
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $name = $_POST['nama'] ?? '';
+        $price = $_POST['harga'] ?? '';
+        $stock = $_POST['stok'] ?? '';
+        $kategori = $_POST['kategori'] ?? '';
+
+        if (!empty($name) && !empty($price) && !empty($stock) && !empty($kategori)) {
+            $sql = "UPDATE tb_barang SET 
+                    brg_nama = '$name',
+                    brg_harga = '$price',
+                    brg_stok = '$stock',
+                    brg_jenis = '$kategori',
+                    brg_time = NOW()
+                    WHERE brg_id = '$id'";
+
+            if (mysqli_query($conn, $sql)) {
+                header('Location: index.php');
+                exit();
+            } else {
+                echo '<div class="alert alert-danger">Error: ' . mysqli_error($conn) . '</div>';
+            }
+        }
+    }
+
+    if ($barang) {
+        echo '<div class="container mt-5">';
+        echo '<div class="card">';
+        echo '<div class="card-header bg-warning text-white display-6 fw-bold">Edit Barang</div>';
+        echo '<div class="card-body">';
+        echo '<form method="POST" action="index.php?page=3&id=' . $id . '">';
+
+        echo '<div class="mb-3">';
+        echo '<label for="nama" class="form-label">Nama Barang</label>';
+        echo '<input type="text" class="form-control" id="nama" name="nama" value="' . $barang['brg_nama'] . '" required>';
+        echo '</div>';
+
+        echo '<div class="mb-3">';
+        echo '<label for="harga" class="form-label">Harga</label>';
+        echo '<input type="number" class="form-control" id="harga" name="harga" value="' . $barang['brg_harga'] . '" required>';
+        echo '</div>';
+
+        echo '<div class="mb-3">';
+        echo '<label for="stok" class="form-label">Stok</label>';
+        echo '<input type="number" class="form-control" id="stok" name="stok" value="' . $barang['brg_stok'] . '" required>';
+        echo '</div>';
+
+        echo '<div class="mb-3">';
+        echo '<label for="kategori" class="form-label">Kategori</label>';
+        echo '<select class="form-select" id="kategori" name="kategori" required>';
+        echo '<option value="">Pilih Kategori</option>';
+        echo '<option value="1" ' . ($barang['brg_jenis'] == 1 ? 'selected' : '') . '>Makanan</option>';
+        echo '<option value="2" ' . ($barang['brg_jenis'] == 2 ? 'selected' : '') . '>Minuman</option>';
+        echo '<option value="3" ' . ($barang['brg_jenis'] == 3 ? 'selected' : '') . '>Peralatan</option>';
+        echo '</select>';
+        echo '</div>';
+
+        echo '<button type="submit" class="btn btn-warning">Update</button>';
+        echo '<a href="index.php?page=0" class="btn btn-danger ms-3">Kembali</a>';
+        echo '</form>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+    } else {
+        echo "<div class='alert alert-danger'>Barang tidak ditemukan!</div>";
+    }
+} else {
+    echo "<div class='alert alert-danger'>ID tidak valid!</div>";
+}
+?>
+
+
+
+
+
+
+
+
+
+
+
+
