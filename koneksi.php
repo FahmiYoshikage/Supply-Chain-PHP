@@ -5,7 +5,7 @@ ini_set('display_errors', 1);
 
 $host = 'localhost';
 $user = 'root';
-$pass = '';
+$pass = '123';
 $dbname = 'latihan_fahmi';
 
 $conn = mysqli_connect($host, $user, $pass, $dbname);
