@@ -38,7 +38,7 @@ CREATE TABLE tb_transaksi (
     transaksi_pelanggan INT NOT NULL,
     transaksi_barang INT NOT NULL,
     transaksi_jumlah INT NOT NULL,
-    transaksi_total DECIMAL(10, 2) NOT NULL,
+    transaksi_total DECIMAL(15, 2) NOT NULL,
     FOREIGN KEY (transaksi_pelanggan) REFERENCES tb_pelanggan(pelanggan_id),
     FOREIGN KEY (transaksi_barang) REFERENCES tb_barang(brg_id)
 );
