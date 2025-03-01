@@ -619,21 +619,39 @@
 
             if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($pelanggan) && !empty($barang) && !empty($jumlah)) {
                 // Get the price of the selected item
-                $sqlGetPrice = "SELECT brg_harga FROM tb_barang WHERE brg_id = '$barang'";
+                $sqlGetPrice = "SELECT brg_harga, brg_stok FROM tb_barang WHERE brg_id = '$barang'";
                 $queryPrice = mysqli_query($conn, $sqlGetPrice);
                 $rowPrice = mysqli_fetch_assoc($queryPrice);
                 $hargaBarang = $rowPrice['brg_harga'];
+                $currentStock = $rowPrice['brg_stok'];
 
-                // Calculate total
-                $total = $jumlah * $hargaBarang;
-
-                $sql = "INSERT INTO tb_transaksi (transaksi_time, transaksi_pelanggan, transaksi_barang, transaksi_jumlah, transaksi_total) VALUES (NOW(),'$pelanggan', '$barang', '$jumlah', '$total')";
-                $query = mysqli_query($conn, $sql);
-                if ($query) {
-                    header('Location: index.php?page=12');
-                    exit();
+                // Check if enough stock is available
+                if ($currentStock < $jumlah) {
+                    echo '<div class="alert alert-danger">Stok tidak mencukupi! Stok tersedia: ' . $currentStock . '</div>';
                 } else {
-                    echo '<div class="alert alert-danger">Error: ' . mysqli_error($conn) . '</div>';
+                    // Calculate total
+                    $total = $jumlah * $hargaBarang;
+
+                    // Begin transaction to ensure both operations succeed or fail together
+                    mysqli_begin_transaction($conn);
+
+                    // Insert transaction
+                    $sql = "INSERT INTO tb_transaksi (transaksi_time, transaksi_pelanggan, transaksi_barang, transaksi_jumlah, transaksi_total) VALUES (NOW(),'$pelanggan', '$barang', '$jumlah', '$total')";
+                    $query = mysqli_query($conn, $sql);
+
+                    // Update stock
+                    $newStock = $currentStock - $jumlah;
+                    $updateStock = "UPDATE tb_barang SET brg_stok = '$newStock' WHERE brg_id = '$barang'";
+                    $queryUpdateStock = mysqli_query($conn, $updateStock);
+
+                    if ($query && $queryUpdateStock) {
+                        mysqli_commit($conn);
+                        header('Location: index.php?page=12');
+                        exit();
+                    } else {
+                        mysqli_rollback($conn);
+                        echo '<div class="alert alert-danger">Error: ' . mysqli_error($conn) . '</div>';
+                    }
                 }
             }
 
@@ -695,16 +713,37 @@
             $id = GET('id', 0);
 
             if ($id) {
-                $sql = "DELETE FROM tb_transaksi WHERE transaksi_id = '$id'";
-                $query = mysqli_query($conn, $sql);
+                // Get transaction details before deleting
+                $sqlGetTrans = "SELECT transaksi_barang, transaksi_jumlah FROM tb_transaksi WHERE transaksi_id = '$id'";
+                $queryGetTrans = mysqli_query($conn, $sqlGetTrans);
+                $transaksi = mysqli_fetch_assoc($queryGetTrans);
 
-                if ($query) {
-                    // Reset auto-increment
-                    mysqli_query($conn, "ALTER TABLE tb_transaksi AUTO_INCREMENT = 1");
-                    header('Location: index.php?page=12');
-                    exit();
-                } else {
-                    echo 'Error: ' . mysqli_error($conn);
+                if ($transaksi) {
+                    $barangId = $transaksi['transaksi_barang'];
+                    $jumlah = $transaksi['transaksi_jumlah'];
+
+                    // Begin transaction
+                    mysqli_begin_transaction($conn);
+
+                    // Restore stock
+                    $sqlRestoreStock = "UPDATE tb_barang SET brg_stok = brg_stok + $jumlah WHERE brg_id = '$barangId'";
+                    $queryRestoreStock = mysqli_query($conn, $sqlRestoreStock);
+
+                    // Delete transaction
+                    $sql = "DELETE FROM tb_transaksi WHERE transaksi_id = '$id'";
+                    $query = mysqli_query($conn, $sql);
+
+                    if ($query && $queryRestoreStock) {
+                        // Commit transaction
+                        mysqli_commit($conn);
+                        // Reset auto-increment
+                        mysqli_query($conn, "ALTER TABLE tb_transaksi AUTO_INCREMENT = 1");
+                        header('Location: index.php?page=12');
+                        exit();
+                    } else {
+                        mysqli_rollback($conn);
+                        echo 'Error: ' . mysqli_error($conn);
+                    }
                 }
             }
 
@@ -718,39 +757,63 @@
         if ($page == 15){
             $id = GET('id', 0);
             include 'koneksi.php';
-        
+
             if ($id) {
                 $sql = "SELECT * FROM tb_transaksi WHERE transaksi_id = '$id'";
                 $result = mysqli_query($conn, $sql);
                 $transaksi = mysqli_fetch_assoc($result);
-            
+
                 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pelanggan = $_POST['pelanggan'] ?? '';
                     $barang = $_POST['barang'] ?? '';
                     $jumlah = $_POST['jumlah'] ?? '';
-        
-                    // Get the price of the selected item
-                    $sqlGetPrice = "SELECT brg_harga FROM tb_barang WHERE brg_id = '$barang'";
+
+                    // Begin transaction
+                    mysqli_begin_transaction($conn);
+
+                    // Get current stock and restore previous transaction amount
+                    $oldBarangId = $transaksi['transaksi_barang'];
+                    $oldJumlah = $transaksi['transaksi_jumlah'];
+
+                    // Restore stock for the old item
+                    $sqlRestoreStock = "UPDATE tb_barang SET brg_stok = brg_stok + $oldJumlah WHERE brg_id = '$oldBarangId'";
+                    $queryRestoreStock = mysqli_query($conn, $sqlRestoreStock);
+
+                    // Get the price and stock of the selected item
+                    $sqlGetPrice = "SELECT brg_harga, brg_stok FROM tb_barang WHERE brg_id = '$barang'";
                     $queryPrice = mysqli_query($conn, $sqlGetPrice);
                     $rowPrice = mysqli_fetch_assoc($queryPrice);
                     $hargaBarang = $rowPrice['brg_harga'];
-        
-                    // Calculate total
-                    $total = $jumlah * $hargaBarang;
-        
-                    if (!empty($pelanggan) && !empty($barang) && !empty($jumlah)) {
-                        $sql = "UPDATE tb_transaksi SET 
-                                transaksi_time = NOW(),
-                                transaksi_pelanggan = '$pelanggan',
-                                transaksi_barang = '$barang',
-                                transaksi_jumlah = '$jumlah',
-                                transaksi_total = '$total'
-                                WHERE transaksi_id = '$id'";
-        
-                        if (mysqli_query($conn, $sql)) {
+                    $currentStock = $rowPrice['brg_stok'];
+
+                    // Check if enough stock is available for the new quantity
+                    if ($currentStock < $jumlah) {
+                        echo '<div class="alert alert-danger">Stok tidak mencukupi! Stok tersedia: ' . $currentStock . '</div>';
+                        mysqli_rollback($conn);
+                    } else {
+                        // Calculate total
+                        $total = $jumlah * $hargaBarang;
+
+                        // Update the stock for the new item
+                        $updateNewStock = "UPDATE tb_barang SET brg_stok = brg_stok - $jumlah WHERE brg_id = '$barang'";
+                        $queryUpdateNewStock = mysqli_query($conn, $updateNewStock);
+
+                        // Update transaction
+                        $sqlUpdateTrans = "UPDATE tb_transaksi SET
+                        transaksi_time = NOW(),
+                        transaksi_pelanggan = '$pelanggan',
+                        transaksi_barang = '$barang',
+                        transaksi_jumlah = '$jumlah',
+                        transaksi_total = '$total'
+                        WHERE transaksi_id = '$id'";
+                        $queryUpdateTrans = mysqli_query($conn, $sqlUpdateTrans);
+
+                        if ($queryRestoreStock && $queryUpdateNewStock && $queryUpdateTrans) {
+                            mysqli_commit($conn);
                             header('Location: index.php?page=12');
                             exit();
                         } else {
+                            mysqli_rollback($conn);
                             echo '<div class="alert alert-danger">Error: ' . mysqli_error($conn) . '</div>';
                         }
                     }
